@@ -6,20 +6,20 @@
 
 ## Project Overview
 
-[cite_start]This repository contains the source code for the practical assignment of the **Algorithm Design and Analysis** course (2025/2) at the Pontifical Catholic University of Minas Gerais (PUC Minas), under the supervision of Prof. Silvio Jamil F. Guimarães[cite: 1, 2, 3].
+This repository contains the source code for the practical assignment of the **Algorithm Design and Analysis** course (2025/2) at the Pontifical Catholic University of Minas Gerais (PUC Minas), under the supervision of Prof. Silvio Jamil F. Guimarães.
 
-[cite_start]The project's objective is to perform a theoretical and practical computational cost analysis of three data structures applied to a Content-Based Image Retrieval (CBIR) problem[cite: 15]. [cite_start]The goal is to find images in a database that are visually similar to a given query image[cite: 14]. [cite_start]The similarity is determined by comparing feature vectors extracted from the images[cite: 12].
+The project's objective is to perform a theoretical and practical computational cost analysis of three data structures applied to a Content-Based Image Retrieval (CBIR) problem.The goal is to find images in a database that are visually similar to a given query image.The similarity is determined by comparing feature vectors extracted from the images.
 
 The data structures implemented and analyzed are:
 1.  **Sequential List** (baseline with linear search)
 2.  **Quadtree** (generalized for N-dimensions as a **K-d Tree**)
 3.  **Hashing** (using the **Locality-Sensitive Hashing - LSH** technique)
 
-[cite_start]The implementation is required to be in C/C++[cite: 4].
+The implementation is required to be in C/C++.
 
 ## Key Features
 
--   [cite_start]**Feature Extraction:** Extracts 24-dimensional feature vectors from color images using 8-bin RGB color histograms[cite: 15].
+-   **Feature Extraction:** Extracts 24-dimensional feature vectors from color images using 8-bin RGB color histograms.
 -   **Data Structure Implementation:** Provides functional implementations for `DocumentList`, `KdTree`, and `DocumentHash` (LSH).
 -   **Similarity Search:** Uses Euclidean distance to measure the similarity between feature vectors.
 -   **Performance Analysis:** Times the search operations for each data structure in microseconds to allow for practical performance comparison.
@@ -93,13 +93,10 @@ When the program is executed, it will perform the following steps:
 
 ## Group Members
 
-[cite_start]As required by the assignment, this project was developed by[cite: 4]:
+[cite_start]As required by the assignment, this project was developed by:
 -   *Member Name 1*
 -   *Member Name 2*
 -   *Member Name 3*
 -   *Member Name 4*
 -   *Member Name 5*
 
-## License
-
-This project is distributed under the MIT License.
