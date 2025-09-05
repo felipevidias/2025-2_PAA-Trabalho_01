@@ -1,44 +1,31 @@
 /**
  * @file main.cpp
  * @brief Main driver for the Algorithm Analysis project.
- * This version is configured for performance experiments with a real dataset and visualization.
+ * This version is adapted for flat-directory datasets where categories are
+ * determined by filename ranges (e.g., Wang Database).
  */
 
- #include "ImageUtils.h"     // Contains Document struct and image processing functions
- #include "DataStructures.h" // Contains the data structure implementations
- #include <chrono>           // For high-resolution timing
+ #include "ImageUtils.h"
+ #include "DataStructures.h"
+ #include <chrono>
+ #include <filesystem>
+ #include <fstream>
+ #include <algorithm>
+ #include <vector>
  
- // Helper function to display results side-by-side
- void displayResults(const std::string& queryPath, const std::string& resultPath, const std::string& methodName) {
-     // Load images
-     cv::Mat queryImg = cv::imread(queryPath);
-     cv::Mat resultImg = cv::imread(resultPath);
+ namespace fs = std::filesystem;
  
-     if (queryImg.empty() || resultImg.empty()) {
-         std::cout << "Could not display images for " << methodName << std::endl;
-         return;
+ // Helper function to get the category from a filename (e.g., "data/150.jpg" -> category 1)
+ // It assumes images are grouped in hundreds.
+ int getCategory(const std::string& filename) {
+     try {
+         fs::path p(filename);
+         std::string stem = p.stem().string(); // Gets the filename without extension (e.g., "150")
+         int id = std::stoi(stem);
+         return id / 100; // Group images by hundreds
+     } catch (...) {
+         return -1; // Return an invalid category if filename is not a number
      }
- 
-     // Resize images to a standard size for consistent display
-     cv::Size stdSize(400, 400);
-     cv::resize(queryImg, queryImg, stdSize);
-     cv::resize(resultImg, resultImg, stdSize);
- 
-     // Create a new image to hold both side-by-side
-     cv::Mat comparisonImg(stdSize.height, stdSize.width * 2, queryImg.type());
- 
-     // Copy query image to the left side
-     queryImg.copyTo(comparisonImg(cv::Rect(0, 0, stdSize.width, stdSize.height)));
-     // Copy result image to the right side
-     resultImg.copyTo(comparisonImg(cv::Rect(stdSize.width, 0, stdSize.width, stdSize.height)));
-     
-     // Add text labels
-     cv::putText(comparisonImg, "Query Image", cv::Point(10, 30), cv::FONT_HERSHEY_SIMPLEX, 1, cv::Scalar(0, 255, 0), 2);
-     cv::putText(comparisonImg, "Found Result", cv::Point(stdSize.width + 10, 30), cv::FONT_HERSHEY_SIMPLEX, 1, cv::Scalar(0, 0, 255), 2);
- 
-     // Show the final image in a window
-     std::string windowTitle = "Result for: " + methodName;
-     cv::imshow(windowTitle, comparisonImg);
  }
  
  int main() {
@@ -46,109 +33,155 @@
      // 1. DATA CONFIGURATION AND LOADING
      //=========================================================================
      
-     // --- Dataset Definition (Main Experiment) ---
-     // Add more images here to test performance with larger datasets.
-     std::vector<std::string> image_paths = {
-         "data/db_natureza_01.jpg",
-         "data/db_natureza_02.jpg",
-         "data/db_natureza_03.jpg",
-         "data/db_cidade_01.jpg",
-         "data/db_cidade_02.jpg",
-         "data/db_animal_01.jpg"
+     // --- Automatically load all image paths from the "data" directory ---
+     std::vector<std::string> image_paths;
+     const std::string data_path = "data";
+     for (const auto & entry : fs::directory_iterator(data_path)) {
+         if (entry.is_regular_file()) {
+             std::string extension = entry.path().extension().string();
+             if (extension == ".jpg" || extension == ".jpeg" || extension == ".png") {
+                 image_paths.push_back(entry.path().string());
+             }
+         }
+     }
+ 
+     if (image_paths.empty()) {
+         std::cerr << "Error: No images found in the 'data' directory." << std::endl;
+         return 1;
+     }
+ 
+     // --- Query Definitions ---
+     // Select one image from each of a few categories for robust testing.
+     // IMPORTANT: Make sure these files exist in your 'data' folder.
+     std::vector<std::string> query_paths = {
+         "data/50.jpg",   // Categoria 0 (e.g., Africa)
+         "data/150.jpg",  // Categoria 1 (e.g., Praia)
+         "data/250.jpg",  // Categoria 2 (e.g., Monumentos)
+         "data/450.jpg",  // Categoria 4 (e.g., Flores)
+         "data/650.jpg",  // Categoria 6 (e.g., Cavalos)
+         "data/950.jpg"   // Categoria 9 (e.g., Comida)
      };
  
-     // --- Query Definition (Main Experiment) ---
-     std::string query_path = "data/query_natureza.jpg";
+     // --- Prepare results file ---
+     std::ofstream resultsFile("results.txt");
+     if (!resultsFile.is_open()) {
+         std::cerr << "Error: Could not open results.txt for writing." << std::endl;
+         return 1;
+     }
  
-     std::cout << ">>> STARTING PERFORMANCE EXPERIMENT <<<\n";
-     std::cout << "Dataset size: " << image_paths.size() << " images." << std::endl;
-     std::cout << "Query image: " << query_path << "\n" << std::endl;
+     std::cout << "Starting experiments with large dataset... This may take a while." << std::endl;
+     std::cout << "Results will be saved to results.txt" << std::endl;
+     resultsFile << "PERFORMANCE AND PRECISION ANALYSIS (Flat Directory Dataset)\n";
+     resultsFile << "================================================================\n";
+     resultsFile << "Total images in database: " << image_paths.size() << "\n\n";
  
-     // --- Image Loading and Feature Extraction ---
+     // --- Load all documents into memory once to be fair in timing ---
+     std::cout << "Loading and extracting features from " << image_paths.size() << " images..." << std::endl;
      std::vector<Document> all_docs;
-     int id = 1;
- 
+     int id_counter = 1;
      for (const auto &path : image_paths) {
          std::vector<float> features = extractHistogram(path);
          if (!features.empty()) {
-             all_docs.emplace_back(id++, features, path);
+             all_docs.emplace_back(id_counter++, features, path);
          }
      }
-     
-     // --- Prepare Query Document ---
-     std::vector<float> query_features = extractHistogram(query_path);
-     if (query_features.empty()) {
-         std::cerr << "Failed to load the query image." << std::endl;
-         return 1;
-     }
-     Document query(-1, query_features, query_path);
+     std::cout << "Feature extraction complete.\n" << std::endl;
  
      const int FEATURE_DIMENSIONS = 24;
+     const int TOP_K = 10;
  
      //=========================================================================
-     // 2. EXPERIMENTS
+     // 2. EXPERIMENTS LOOP
      //=========================================================================
+     for (const auto& query_path : query_paths) {
+         Document query;
+         bool query_found = false;
+         for(const auto& doc : all_docs){
+             if(doc.filename == query_path){
+                 query = doc;
+                 query_found = true;
+                 break;
+             }
+         }
+         if(!query_found){
+             std::cerr << "Warning: Query image " << query_path << " not found in the dataset. Skipping." << std::endl;
+             continue;
+         }
  
-     // --- Experiment 1: Sequential List ---
-     std::cout << "--- Testing Sequential List ---" << std::endl;
-     {
-         DocumentList list;
-         for(const auto& doc : all_docs) { list.insert(doc); }
- 
-         auto start_time = std::chrono::high_resolution_clock::now();
-         const Document* result = list.searchSimilar(query);
-         auto end_time = std::chrono::high_resolution_clock::now();
+         int queryCategory = getCategory(query.filename);
+         resultsFile << "--------------------------------------\n";
+         resultsFile << "QUERY IMAGE: " << query.filename << " (Category " << queryCategory << ")\n";
+         resultsFile << "--------------------------------------\n\n";
          
-         if(result) {
+         // --- Experiment 1: Sequential List ---
+         {
+             DocumentList list;
+             for(const auto& doc : all_docs) { if(doc.filename != query.filename) list.insert(doc); }
+             
+             auto start_time = std::chrono::high_resolution_clock::now();
+             std::vector<Document> results = list.searchSimilar(query, TOP_K);
+             auto end_time = std::chrono::high_resolution_clock::now();
+             auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+ 
+             int correct_count = 0;
+             resultsFile << "--- Method: Sequential List ---\n";
+             resultsFile << "Time: " << duration.count() << " ms\n";
+             for(const auto& res : results){
+                 if(getCategory(res.filename) == queryCategory) correct_count++;
+             }
+             double precision = (double)correct_count / TOP_K * 100.0;
+             resultsFile << "Precision@" << TOP_K << ": " << precision << "%\n\n";
+         }
+ 
+         // --- Experiment 2: K-d Tree ---
+         {
+             KdTree tree(FEATURE_DIMENSIONS);
+             for(const auto& doc : all_docs) { if(doc.filename != query.filename) tree.insert(doc); }
+ 
+             auto start_time = std::chrono::high_resolution_clock::now();
+             std::vector<Document> results = tree.searchSimilar(query, TOP_K);
+             auto end_time = std::chrono::high_resolution_clock::now();
              auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
-             std::cout << "Found result: " << result->filename << " (Time: " << duration.count() << " us)" << std::endl;
-             // Call display function
-             displayResults(query.filename, result->filename, "Sequential List");
+             
+             int correct_count = 0;
+             resultsFile << "--- Method: K-d Tree ---\n";
+             resultsFile << "Time: " << duration.count() << " us\n";
+             for(const auto& res : results){
+                 if(getCategory(res.filename) == queryCategory) correct_count++;
+             }
+             double precision = (double)correct_count / TOP_K * 100.0;
+             resultsFile << "Precision@" << TOP_K << ": " << precision << "%\n\n";
+         }
+ 
+         // --- Experiment 3: Locality-Sensitive Hashing (LSH) ---
+         {
+             DocumentHash lsh(FEATURE_DIMENSIONS, 16, 0.5); 
+             for(const auto& doc : all_docs) { if(doc.filename != query.filename) lsh.insert(doc); }
+ 
+             auto start_time = std::chrono::high_resolution_clock::now();
+             std::vector<Document> results = lsh.searchSimilar(query, TOP_K);
+             auto end_time = std::chrono::high_resolution_clock::now();
+             auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
+ 
+             int correct_count = 0;
+             resultsFile << "--- Method: Hashing (LSH) ---\n";
+             resultsFile << "Time: " << duration.count() << " us\n";
+             if(results.empty()){
+                 resultsFile << "No results found in the same LSH bucket.\n";
+                 resultsFile << "Precision@" << TOP_K << ": 0.0%\n\n";
+             } else {
+                 for(const auto& res : results){
+                     if(getCategory(res.filename) == queryCategory) correct_count++;
+                 }
+                 double precision = (double)correct_count / results.size() * 100.0;
+                 resultsFile << "Precision@" << results.size() << " (on returned items): " << precision << "%\n\n";
+             }
          }
      }
  
-     // --- Experiment 2: K-d Tree ---
-     std::cout << "\n--- Testing K-d Tree ---" << std::endl;
-     {
-         KdTree tree(FEATURE_DIMENSIONS);
-         for(const auto& doc : all_docs) { tree.insert(doc); }
- 
-         auto start_time = std::chrono::high_resolution_clock::now();
-         const Document* result = tree.searchSimilar(query);
-         auto end_time = std::chrono::high_resolution_clock::now();
- 
-         if(result) {
-             auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
-             std::cout << "Found result: " << result->filename << " (Time: " << duration.count() << " us)" << std::endl;
-             // Call display function
-             displayResults(query.filename, result->filename, "K-d Tree");
-         }
-     }
- 
-     // --- Experiment 3: Locality-Sensitive Hashing (LSH) ---
-     std::cout << "\n--- Testing Hashing (LSH) ---" << std::endl;
-     {
-         DocumentHash lsh(FEATURE_DIMENSIONS, 8, 0.25); 
-         for(const auto& doc : all_docs) { lsh.insert(doc); }
- 
-         auto start_time = std::chrono::high_resolution_clock::now();
-         const Document* result = lsh.searchSimilar(query);
-         auto end_time = std::chrono::high_resolution_clock::now();
-         
-         if(result) {
-             auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
-             std::cout << "Found result: " << result->filename << " (Time: " << duration.count() << " us)" << std::endl;
-             // Call display function
-             displayResults(query.filename, result->filename, "LSH");
-         } else {
-             std::cout << "No result found in the same LSH bucket." << std::endl;
-         }
-     }
- 
-     // Wait for a key press to close the image windows
-     std::cout << "\nPress any key in an image window to exit." << std::endl;
-     cv::waitKey(0);
-     cv::destroyAllWindows();
- 
+     resultsFile.close();
+     std::cout << "\nExperiments finished successfully. Check results.txt for the output." << std::endl;
      return 0;
  }
+ 
+ 
